@@ -49,3 +49,5 @@ A Laravel-based web application for submitting, tracking, and resolving complain
 ```bash
 php artisan test
 ```
+
+<!-- dry-run: testing UAT branch protection + PR workflow -->
