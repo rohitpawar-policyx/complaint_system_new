@@ -12,10 +12,8 @@
         <input id="name" name="name" type="text" value="{{ old('name') }}" required autofocus autocomplete="name">
         <label for="email">Email</label>
         <input id="email" name="email" type="email" value="{{ old('email') }}" required autocomplete="email">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" required autocomplete="new-password">
-        <label for="password_confirmation">Confirm password</label>
-        <input id="password_confirmation" name="password_confirmation" type="password" required autocomplete="new-password">
+        <x-password-field id="password" name="password" label="Password" autocomplete="new-password" />
+        <x-password-field id="password_confirmation" name="password_confirmation" label="Confirm password" autocomplete="new-password" />
         <button type="submit"><x-icon name="user-plus" /> Create account</button>
     </form>
 
