@@ -13,8 +13,7 @@
         @csrf
         <label for="email">Email</label>
         <input id="email" name="email" type="email" value="{{ old('email') }}" required autofocus autocomplete="email">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" required autocomplete="current-password">
+        <x-password-field id="password" name="password" label="Password" autocomplete="current-password" />
         <label class="checkbox-label"><input type="checkbox" name="remember"> Remember me</label>
         <button type="submit"><x-icon name="log-in" /> Log in</button>
     </form>
