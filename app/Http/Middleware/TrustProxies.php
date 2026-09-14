@@ -10,9 +10,15 @@ class TrustProxies extends Middleware
     /**
      * The trusted proxies for this application.
      *
+     * Render (and most PaaS platforms) terminate TLS at their edge and
+     * forward plain HTTP to the container, so we trust all proxies here —
+     * the network boundary is already locked down by the platform itself.
+     * Without this, Laravel ignores X-Forwarded-Proto and generates http://
+     * asset URLs on an https:// page, which browsers block as mixed content.
+     *
      * @var array<int, string>|string|null
      */
-    protected $proxies;
+    protected $proxies = '*';
 
     /**
      * The headers that should be used to detect proxies.
