@@ -298,3 +298,16 @@ document.querySelectorAll('[data-notification-bell]').forEach((bell) => {
 		}
 	});
 });
+
+// --- Password field show/hide toggle (x-password-field component) --------
+document.querySelectorAll('[data-password-toggle]').forEach((button) => {
+	const input = button.closest('.password-field')?.querySelector('input');
+	if (!input) return;
+
+	button.addEventListener('click', () => {
+		const willShow = input.type === 'password';
+		input.type = willShow ? 'text' : 'password';
+		button.classList.toggle('is-visible', willShow);
+		button.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
+	});
+});

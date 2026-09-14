@@ -82,12 +82,12 @@ textarea {
     display: grid;
     min-height: 100vh;
     place-items: center;
-    padding: 2rem 1rem;
+    padding: 1.25rem 1rem;
 }
 
 .auth-card {
     width: min(100%, 28rem);
-    padding: 2rem;
+    padding: 1.5rem;
     background: #ffffff;
     border: 1px solid #d8e1e5;
     border-radius: 8px;
@@ -106,6 +106,53 @@ textarea {
     border: 1px solid #aebdc4;
     border-radius: 4px;
     font: inherit;
+}
+
+/* ==========================================================================
+   Password field with a show/hide toggle button (x-password-field).
+   ========================================================================== */
+
+.password-field {
+    position: relative;
+}
+
+.password-field input {
+    padding-right: 2.5rem;
+}
+
+.password-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    right: 0.5rem;
+    transform: translateY(-50%);
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #52636b;
+    cursor: pointer;
+}
+
+.password-toggle:hover {
+    color: #1f2933;
+    background: #f4f7f9;
+}
+
+.password-toggle-hide {
+    display: none;
+}
+
+.password-toggle.is-visible .password-toggle-show {
+    display: none;
+}
+
+.password-toggle.is-visible .password-toggle-hide {
+    display: inline;
 }
 
 .auth-form button {
@@ -192,7 +239,7 @@ textarea {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 1rem 5vw;
+    padding: 0.85rem 5vw;
     background: #ffffff;
     border-bottom: 1px solid #d8e1e5;
 }
@@ -312,7 +359,7 @@ textarea {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
     gap: 1.25rem;
-    margin: 2rem 0;
+    margin: 1.25rem 0;
 }
 
 .home-feature-grid h3 {
@@ -329,11 +376,11 @@ textarea {
 .page-shell {
     width: min(100% - 3rem, 88rem);
     margin: 0 auto;
-    padding: 1.75rem 0 2.5rem;
+    padding: 1.25rem 0 1.75rem;
 }
 
 .page-heading {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .page-heading h1 {
@@ -351,7 +398,7 @@ textarea {
 }
 
 .content-card {
-    padding: 1.5rem;
+    padding: 1.25rem;
     background: #ffffff;
     border: 1px solid #d8e1e5;
     border-radius: 8px;
@@ -420,7 +467,7 @@ textarea {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .dashboard-card {
@@ -598,7 +645,7 @@ textarea {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 1rem 1.5rem;
+    padding: 0.85rem 1.5rem;
     background: #ffffff;
     border-bottom: 1px solid var(--color-border);
     position: sticky;
@@ -916,13 +963,13 @@ textarea {
     max-width: none;
     min-width: 0;
     margin: 0;
-    padding: 1.75rem 2rem 2.5rem;
+    padding: 1.25rem 1.5rem 1.75rem;
 }
 
 .user-details-card,
 .status-card {
     max-width: 48rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .status-form {
@@ -1056,7 +1103,7 @@ textarea {
 }
 
 .filter-card {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .admin-filter-form {
