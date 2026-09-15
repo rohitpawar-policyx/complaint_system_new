@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\ChatMessageSent;
+use App\Models\ChatConversation;
 use App\Models\Complaint;
 use App\Models\ComplaintAttachment;
 use App\Models\ComplaintHistory;
 use App\Models\ComplaintReason;
 use App\Notifications\ComplaintCreatedNotification;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -136,9 +139,62 @@ class ComplaintController extends Controller
             abort(404);
         }
 
-        $complaint->load(['reason', 'attachments', 'history.performer', 'history.assignedFromUser', 'history.assignedToUser']);
+        $complaint->load([
+            'reason', 'attachments', 'history.performer', 'history.assignedFromUser', 'history.assignedToUser',
+            'chatConversation.messages.sender',
+        ]);
 
-        return view('complaints.show', ['complaint' => $complaint]);
+        return view('complaints.show', [
+            'complaint' => $complaint,
+            'chatAvailable' => $complaint->status !== 'pending',
+            'chatReadOnly' => in_array($complaint->status, Complaint::CHAT_READ_ONLY_STATUSES, true),
+        ]);
+    }
+
+    /**
+     * Send a chat message on this complaint. The conversation is created
+     * lazily on the first authorized message rather than via a separate
+     * "start chat" step - simpler, and there's never a conversation with
+     * zero messages sitting in an awkward half-started state.
+     */
+    public function storeChatMessage(Request $request, Complaint $complaint): JsonResponse
+    {
+        if ($complaint->user_id !== $request->user()->id) {
+            abort(404);
+        }
+
+        if ($complaint->status === 'pending') {
+            abort(403, 'Chat is not available while your complaint is pending.');
+        }
+
+        if (in_array($complaint->status, Complaint::CHAT_READ_ONLY_STATUSES, true)) {
+            abort(403, 'This complaint is closed - chat is read-only.');
+        }
+
+        // Normalize before validating so a whitespace-only message is
+        // correctly rejected by the "required" rule, not stored as blank.
+        $request->merge(['message' => trim((string) $request->input('message', ''))]);
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $conversation = $complaint->chatConversation ?? ChatConversation::create([
+            'complaint_id' => $complaint->id,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $message = $conversation->messages()->create([
+            'sender_id' => $request->user()->id,
+            'message' => $validated['message'],
+        ]);
+
+        // Broadcast to everyone on the channel, including this sender - the
+        // frontend renders every message (its own included) purely from the
+        // WebSocket event, so there's exactly one rendering code path rather
+        // than an "optimistic render + reconcile with the echo" dance.
+        broadcast(new ChatMessageSent($message));
+
+        return response()->json(['success' => true]);
     }
 
     public function downloadAttachment(Request $request, Complaint $complaint, ComplaintAttachment $attachment): StreamedResponse

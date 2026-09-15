@@ -40,6 +40,8 @@ Route::middleware(['auth', 'approved'])->group(function () {
     Route::get('/complaints/{complaint}', [ComplaintController::class, 'show'])->name('complaints.show');
     Route::get('/complaints/{complaint}/attachments/{attachment}', [ComplaintController::class, 'downloadAttachment'])
         ->name('complaints.attachments.download');
+    Route::post('/complaints/{complaint}/chat/messages', [ComplaintController::class, 'storeChatMessage'])
+        ->name('complaints.chat.store');
 
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('/notifications/feed', [NotificationController::class, 'feed'])->name('notifications.feed');
@@ -77,6 +79,8 @@ Route::middleware(['auth', 'approved', 'admin'])->prefix('admin')->name('admin.'
     Route::patch('/complaints/{complaint}/status', [AdminComplaintController::class, 'updateStatus'])->name('complaints.status');
     Route::get('/complaints/{complaint}/attachments/{attachment}', [AdminComplaintController::class, 'downloadAttachment'])
         ->name('complaints.attachments.download');
+    Route::post('/complaints/{complaint}/chat/messages', [AdminComplaintController::class, 'storeChatMessage'])
+        ->name('complaints.chat.store');
 
     Route::get('/complaint-history', [ComplaintHistoryController::class, 'index'])->name('history.index');
 });

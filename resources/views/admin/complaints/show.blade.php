@@ -47,6 +47,11 @@
             </form>
         </section>
     </div>
+    <x-chat-panel
+        :complaint="$complaint"
+        :send-url="route('admin.complaints.chat.store', $complaint)"
+        :show="true"
+        :can-send="!$chatReadOnly" />
     <section class="content-card history-card">
         <h2>Attachments</h2>
         @if ($complaint->attachments->isEmpty())
@@ -87,4 +92,7 @@
             </ol>
         @endif
     </section>
+    @push('scripts')
+        @vite('resources/js/chat.js')
+    @endpush
 </x-layouts.admin>

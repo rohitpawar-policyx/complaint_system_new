@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Events\ChatMessageSent;
 use App\Http\Controllers\Controller;
+use App\Models\ChatConversation;
 use App\Models\Complaint;
 use App\Models\ComplaintAttachment;
 use App\Models\ComplaintHistory;
@@ -10,6 +12,7 @@ use App\Models\ComplaintReason;
 use App\Models\User;
 use App\Notifications\ComplaintAssignedNotification;
 use App\Notifications\ComplaintStatusChangedNotification;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -72,9 +75,48 @@ class ComplaintController extends Controller
 
     public function show(Complaint $complaint): View
     {
-        $complaint->load(['user', 'reason', 'assignee', 'attachments', 'history.performer', 'history.assignedFromUser', 'history.assignedToUser']);
+        $complaint->load([
+            'user', 'reason', 'assignee', 'attachments', 'history.performer', 'history.assignedFromUser', 'history.assignedToUser',
+            'chatConversation.messages.sender',
+        ]);
 
-        return view('admin.complaints.show', ['complaint' => $complaint, 'assignees' => $this->eligibleAssignees()]);
+        return view('admin.complaints.show', [
+            'complaint' => $complaint,
+            'assignees' => $this->eligibleAssignees(),
+            'chatReadOnly' => in_array($complaint->status, Complaint::CHAT_READ_ONLY_STATUSES, true),
+        ]);
+    }
+
+    /**
+     * Any admin may message on any complaint - matches the rest of this
+     * controller (assign/updateStatus), which likewise has no per-complaint
+     * restriction beyond the route-level `admin` middleware. Unlike the
+     * customer side there is no "pending" restriction for admins.
+     */
+    public function storeChatMessage(Request $request, Complaint $complaint): JsonResponse
+    {
+        if (in_array($complaint->status, Complaint::CHAT_READ_ONLY_STATUSES, true)) {
+            abort(403, 'This complaint is closed - chat is read-only.');
+        }
+
+        $request->merge(['message' => trim((string) $request->input('message', ''))]);
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $conversation = $complaint->chatConversation ?? ChatConversation::create([
+            'complaint_id' => $complaint->id,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $message = $conversation->messages()->create([
+            'sender_id' => $request->user()->id,
+            'message' => $validated['message'],
+        ]);
+
+        broadcast(new ChatMessageSent($message));
+
+        return response()->json(['success' => true]);
     }
 
     public function assign(Request $request, Complaint $complaint): RedirectResponse
