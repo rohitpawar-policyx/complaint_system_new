@@ -20,9 +20,24 @@
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
+        <!-- Deliberately NOT "null"/"log": both no-op auth() entirely (see
+             NullBroadcaster/LogBroadcaster), which would make channel
+             authorization tests pass even with broken auth logic. "reverb"
+             runs the real local HMAC-based channel-matching/auth code with
+             no network call - Event::fake() in each test's setUp() prevents
+             the separate, actually-network-dependent broadcast() call. -->
+        <env name="BROADCAST_DRIVER" value="reverb"/>
+        <env name="REVERB_APP_ID" value="testing"/>
+        <env name="REVERB_APP_KEY" value="testing"/>
+        <env name="REVERB_APP_SECRET" value="testing"/>
         <env name="CACHE_DRIVER" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <!-- A SEPARATE database from dev/.env - RefreshDatabase drops and
+             rebuilds the whole schema on every test run, which would
+             otherwise wipe real local dev data (it did, once - see repo
+             history). Same MySQL server/credentials as .env, different
+             database name. Create it once with:
+               sudo mysql -e "CREATE DATABASE IF NOT EXISTS complaint_system_new_testing; GRANT ALL PRIVILEGES ON complaint_system_new_testing.* TO '<DB_USERNAME>'@'localhost'; FLUSH PRIVILEGES;" -->
+        <env name="DB_DATABASE" value="complaint_system_new_testing"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

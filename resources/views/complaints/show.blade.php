@@ -33,6 +33,12 @@
             @endif
         </section>
     </div>
+    <x-chat-panel
+        :complaint="$complaint"
+        :send-url="route('complaints.chat.store', $complaint)"
+        :show="$chatAvailable"
+        :can-send="$chatAvailable && !$chatReadOnly"
+        unavailable-message="Chat becomes available once your complaint is being reviewed." />
     <section class="content-card history-card">
         <h2>History</h2>
         @if ($complaint->history->isEmpty())
@@ -55,4 +61,9 @@
             </ol>
         @endif
     </section>
+    @if ($chatAvailable)
+        @push('scripts')
+            @vite('resources/js/chat.js')
+        @endpush
+    @endif
 </x-layouts.app>

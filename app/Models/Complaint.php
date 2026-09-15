@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Complaint extends Model
 {
@@ -13,6 +14,9 @@ class Complaint extends Model
 
     public const STATUSES = ['pending', 'in_progress', 'resolved', 'closed', 'rejected'];
     public const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
+
+    /** Statuses where an existing chat becomes read-only (history visible, no new messages). */
+    public const CHAT_READ_ONLY_STATUSES = ['resolved', 'closed', 'rejected'];
 
     protected $fillable = ['user_id', 'reason_id', 'message', 'priority', 'status', 'assigned_to'];
 
@@ -39,5 +43,10 @@ class Complaint extends Model
     public function history(): HasMany
     {
         return $this->hasMany(ComplaintHistory::class)->orderBy('created_at');
+    }
+
+    public function chatConversation(): HasOne
+    {
+        return $this->hasOne(ChatConversation::class);
     }
 }

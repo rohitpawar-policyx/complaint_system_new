@@ -1245,6 +1245,99 @@ tbody tr:last-child td {
     font-size: 0.9rem;
 }
 
+/* ==========================================================================
+   Complaint chat (resources/js/chat.js)
+   ========================================================================== */
+
+.chat-card {
+    margin-top: 1.5rem;
+}
+
+.chat-unavailable,
+.chat-empty-state {
+    margin: 0;
+    color: #52636b;
+}
+
+.chat-error {
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.75rem;
+    color: #8a1c1c;
+    background: #fce8e8;
+    border-radius: 4px;
+}
+
+.chat-messages {
+    display: grid;
+    gap: 0.6rem;
+    max-height: 24rem;
+    margin-bottom: 0.85rem;
+    padding-right: 0.25rem;
+    overflow-y: auto;
+}
+
+.chat-message {
+    max-width: 32rem;
+    padding: 0.6rem 0.85rem;
+    background: #f7fafb;
+    border: 1px solid #e5ecef;
+    border-radius: 8px;
+}
+
+.chat-message--mine {
+    margin-left: auto;
+    background: #e2f1f4;
+    border-color: #bfe0e7;
+}
+
+.chat-message-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.25rem;
+    color: #52636b;
+    font-size: 0.8rem;
+}
+
+.chat-message-text {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.chat-form {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-end;
+}
+
+.chat-form textarea {
+    flex: 1;
+    padding: 0.6rem;
+    border: 1px solid #aebdc4;
+    border-radius: 4px;
+    font: inherit;
+    resize: vertical;
+}
+
+.chat-form button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1rem;
+    border: 0;
+    border-radius: 4px;
+    color: #ffffff;
+    background: #0b6477;
+    cursor: pointer;
+    font: inherit;
+}
+
+.chat-form button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .visually-hidden {
     position: absolute;
     width: 1px;
