@@ -66,5 +66,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'approved' => \App\Http\Middleware\EnsureAccountIsApproved::class,
         'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+        'idempotent' => \App\Http\Middleware\EnsureIdempotentRequest::class,
     ];
 }

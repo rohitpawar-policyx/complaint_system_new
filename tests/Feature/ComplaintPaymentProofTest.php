@@ -43,16 +43,30 @@ class ComplaintPaymentProofTest extends TestCase
         $this->app->instance(PaymentProofOcrService::class, $mock);
     }
 
+    /**
+     * complaints.store now requires an Idempotency-Key header (see
+     * tests/Feature/Idempotency/ComplaintIdempotencyTest.php for the
+     * dedicated tests of that behavior) - a fresh one per call here since
+     * these tests aren't exercising idempotency itself, just the ordinary
+     * creation flow underneath it.
+     */
+    private function idempotencyKey(): string
+    {
+        return (string) \Illuminate\Support\Str::uuid();
+    }
+
     /** 1. Complaint cannot be submitted without payment proof. */
     public function test_complaint_cannot_be_submitted_without_payment_proof(): void
     {
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $response = $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-        ]);
+        $response = $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+            ]);
 
         $response->assertSessionHasErrors('payment_proof');
         $this->assertDatabaseCount('complaints', 0);
@@ -63,11 +77,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $response = $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-            'payment_proof' => UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf'),
-        ]);
+        $response = $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf'),
+            ]);
 
         $response->assertSessionHasErrors('payment_proof');
         $this->assertDatabaseCount('complaints', 0);
@@ -81,11 +97,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $response = $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ]);
+        $response = $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
 
         $response->assertRedirect(route('complaints.create'));
         $response->assertSessionHas('status');
@@ -111,11 +129,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ])->assertSessionHas('status', fn ($status) => str_contains($status, 'transaction ID detected'));
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ])->assertSessionHas('status', fn ($status) => str_contains($status, 'transaction ID detected'));
 
         $complaint = Complaint::first();
         $this->assertSame('extracted', $complaint->ocr_status);
@@ -130,11 +150,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $response = $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ]);
+        $response = $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
 
         $response->assertRedirect(route('complaints.create'));
         $complaint = Complaint::first();
@@ -151,11 +173,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $response = $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Please refund my order.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ]);
+        $response = $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
 
         $response->assertRedirect(route('complaints.create'));
         $complaint = Complaint::first();
@@ -173,7 +197,7 @@ class ComplaintPaymentProofTest extends TestCase
      */
     public function test_ocr_service_itself_never_throws_on_an_unreadable_image(): void
     {
-        $result = (new PaymentProofOcrService())->process('/nonexistent/path/to/image.jpg');
+        $result = (new PaymentProofOcrService)->process('/nonexistent/path/to/image.jpg');
 
         $this->assertSame('failed', $result['status']);
         $this->assertNull($result['transaction_id']);
@@ -187,17 +211,21 @@ class ComplaintPaymentProofTest extends TestCase
 
         $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => 'DUPLICATE123']);
 
-        $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'First complaint.',
-            'payment_proof' => UploadedFile::fake()->image('proof1.jpg'),
-        ]);
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'First complaint.',
+                'payment_proof' => UploadedFile::fake()->image('proof1.jpg'),
+            ]);
 
-        $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Second complaint, same transaction id.',
-            'payment_proof' => UploadedFile::fake()->image('proof2.jpg'),
-        ]);
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Second complaint, same transaction id.',
+                'payment_proof' => UploadedFile::fake()->image('proof2.jpg'),
+            ]);
 
         // Both complaints were created - a duplicate is never a rejection.
         $this->assertDatabaseCount('complaints', 2);
@@ -214,11 +242,13 @@ class ComplaintPaymentProofTest extends TestCase
 
         $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => 'UNIQUE999']);
 
-        $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Only complaint.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ]);
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Only complaint.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
 
         $complaint = Complaint::first();
         $this->assertFalse($complaint->hasDuplicateTransactionId());
@@ -237,11 +267,13 @@ class ComplaintPaymentProofTest extends TestCase
         $customer = $this->makeCustomer();
         $reason = $this->makeReason();
 
-        $this->actingAs($customer)->post(route('complaints.store'), [
-            'reason_id' => $reason->id,
-            'message' => 'Proof will be deleted after upload.',
-            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-        ]);
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Proof will be deleted after upload.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
 
         $complaint = Complaint::first();
         Storage::disk('local')->delete($complaint->payment_proof_path);
