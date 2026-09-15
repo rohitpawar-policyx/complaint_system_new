@@ -11,6 +11,7 @@ use App\Models\ComplaintReason;
 use App\Notifications\ComplaintCreatedNotification;
 use App\Models\User;
 use App\Services\PaymentProofOcrService;
+use App\Support\Idempotency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -113,6 +114,11 @@ class ComplaintController extends Controller
 
             return back()->withErrors(['message' => 'The complaint could not be submitted right now.'])->withInput();
         }
+
+        // Signals success to EnsureIdempotentRequest (if that middleware is
+        // on this route) - only reachable once the transaction above has
+        // actually committed. See App\Support\Idempotency's docblock.
+        Idempotency::recordResource($request, 'complaint', $complaint->id);
 
         // Notification is created only after the transaction has committed
         // successfully; a failure here must never undo the complaint.
