@@ -1,0 +1,226 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Complaint;
+use App\Models\ComplaintReason;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\PaymentProofOcrService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+class ComplaintPaymentProofTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('local');
+    }
+
+    private function makeCustomer(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'user'], ['description' => 'user']);
+
+        return User::factory()->create(['role_id' => $role->id, 'status' => 'approved']);
+    }
+
+    private function makeReason(): ComplaintReason
+    {
+        return ComplaintReason::create(['name' => 'Reason '.uniqid(), 'priority' => 'LOW', 'active' => true]);
+    }
+
+    /** Swaps the real OCR service for a fake that returns a fixed result, without touching Tesseract. */
+    private function fakeOcrResult(array $result): void
+    {
+        $mock = \Mockery::mock(PaymentProofOcrService::class);
+        $mock->shouldReceive('process')->andReturn($result);
+        $this->app->instance(PaymentProofOcrService::class, $mock);
+    }
+
+    /** 1. Complaint cannot be submitted without payment proof. */
+    public function test_complaint_cannot_be_submitted_without_payment_proof(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $response = $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+        ]);
+
+        $response->assertSessionHasErrors('payment_proof');
+        $this->assertDatabaseCount('complaints', 0);
+    }
+
+    public function test_non_image_payment_proof_is_rejected(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $response = $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->create('proof.pdf', 100, 'application/pdf'),
+        ]);
+
+        $response->assertSessionHasErrors('payment_proof');
+        $this->assertDatabaseCount('complaints', 0);
+    }
+
+    /** 2. Valid payment proof image is accepted. 10. Existing creation behavior still works. */
+    public function test_valid_payment_proof_is_accepted_and_complaint_created_normally(): void
+    {
+        $this->fakeOcrResult(['status' => 'not_found', 'transaction_id' => null]);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $response = $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ]);
+
+        $response->assertRedirect(route('complaints.create'));
+        $response->assertSessionHas('status');
+
+        $complaint = Complaint::first();
+        $this->assertNotNull($complaint);
+        $this->assertSame($customer->id, $complaint->user_id);
+        $this->assertSame($reason->id, $complaint->reason_id);
+        $this->assertSame('pending', $complaint->status);
+        $this->assertNotNull($complaint->payment_proof_path);
+        Storage::disk('local')->assertExists($complaint->payment_proof_path);
+        $this->assertDatabaseHas('complaint_history', [
+            'complaint_id' => $complaint->id,
+            'action' => 'complaint_created',
+        ]);
+    }
+
+    /** 3 & 4. Complaint created and transaction ID stored when OCR succeeds. */
+    public function test_complaint_created_with_extracted_transaction_id(): void
+    {
+        $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => '445566778899']);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ])->assertSessionHas('status', fn ($status) => str_contains($status, 'transaction ID detected'));
+
+        $complaint = Complaint::first();
+        $this->assertSame('extracted', $complaint->ocr_status);
+        $this->assertSame('445566778899', $complaint->transaction_id);
+    }
+
+    /** 5. Complaint still created when OCR finds no transaction ID. */
+    public function test_complaint_still_created_when_no_transaction_id_found(): void
+    {
+        $this->fakeOcrResult(['status' => 'not_found', 'transaction_id' => null]);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $response = $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ]);
+
+        $response->assertRedirect(route('complaints.create'));
+        $complaint = Complaint::first();
+        $this->assertNotNull($complaint);
+        $this->assertSame('not_found', $complaint->ocr_status);
+        $this->assertNull($complaint->transaction_id);
+    }
+
+    /** 6. Complaint still created when Tesseract/OCR fails outright. */
+    public function test_complaint_still_created_when_ocr_fails(): void
+    {
+        $this->fakeOcrResult(['status' => 'failed', 'transaction_id' => null]);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $response = $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ]);
+
+        $response->assertRedirect(route('complaints.create'));
+        $complaint = Complaint::first();
+        $this->assertNotNull($complaint);
+        $this->assertSame('failed', $complaint->ocr_status);
+        $this->assertNull($complaint->transaction_id);
+    }
+
+    /**
+     * The real PaymentProofOcrService (not mocked here) must not throw even
+     * when Tesseract can't read the given path at all - this is the one
+     * test in this file that exercises the service's own catch block
+     * directly, without touching a real Tesseract binary either way (a
+     * nonexistent path fails before the binary would even matter).
+     */
+    public function test_ocr_service_itself_never_throws_on_an_unreadable_image(): void
+    {
+        $result = (new PaymentProofOcrService())->process('/nonexistent/path/to/image.jpg');
+
+        $this->assertSame('failed', $result['status']);
+        $this->assertNull($result['transaction_id']);
+    }
+
+    /** 9. Duplicate transaction ID is detected/flagged, not rejected. */
+    public function test_duplicate_transaction_id_is_flagged_not_rejected(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => 'DUPLICATE123']);
+
+        $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'First complaint.',
+            'payment_proof' => UploadedFile::fake()->image('proof1.jpg'),
+        ]);
+
+        $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Second complaint, same transaction id.',
+            'payment_proof' => UploadedFile::fake()->image('proof2.jpg'),
+        ]);
+
+        // Both complaints were created - a duplicate is never a rejection.
+        $this->assertDatabaseCount('complaints', 2);
+
+        [$first, $second] = Complaint::orderBy('id')->get();
+        $this->assertTrue($first->hasDuplicateTransactionId());
+        $this->assertTrue($second->hasDuplicateTransactionId());
+    }
+
+    public function test_unique_transaction_id_is_not_flagged_as_duplicate(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => 'UNIQUE999']);
+
+        $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Only complaint.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ]);
+
+        $complaint = Complaint::first();
+        $this->assertFalse($complaint->hasDuplicateTransactionId());
+    }
+}

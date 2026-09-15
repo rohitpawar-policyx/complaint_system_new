@@ -200,6 +200,15 @@ class ComplaintController extends Controller
             abort(404);
         }
 
+        if (str_starts_with($attachment->mime_type, 'image/')) {
+            return Storage::disk('local')->response($attachment->file_path, $attachment->original_name);
+        }
+
         return Storage::disk('local')->download($attachment->file_path, $attachment->original_name);
+    }
+
+    public function downloadPaymentProof(Complaint $complaint): StreamedResponse
+    {
+        return Storage::disk('local')->response($complaint->payment_proof_path);
     }
 }
