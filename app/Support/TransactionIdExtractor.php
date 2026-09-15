@@ -8,31 +8,70 @@ namespace App\Support;
  * Deliberately conservative: rather than grabbing the first long number
  * anywhere in the text (which would just as happily match a phone number,
  * an amount, a date, or an account number), this only captures a value that
- * immediately follows one of a known set of transaction/reference labels
- * commonly seen on UPI/payment confirmation screenshots. No match is a
- * completely normal, expected outcome - see PaymentProofOcrService.
+ * immediately follows one of a fixed, known set of COMPLETE transaction/
+ * reference label phrases commonly seen on UPI/payment confirmation
+ * screenshots. No match is a completely normal, expected outcome - see
+ * PaymentProofOcrService.
  */
 class TransactionIdExtractor
 {
     /**
-     * Label words that can precede a transaction/reference value, e.g.
-     * "Transaction ID", "Txn No", "UPI Ref No", "Reference Number", "UTR".
-     * Built from these two groups rather than one giant literal-phrase list,
-     * so "UPI Transaction Ref No" and "Txn ID" are both covered without
-     * spelling out every label/suffix combination by hand.
+     * Complete label phrases only - not a word1 x word2 cross-product.
+     * A cross-product ("Ref"+"No" = "Ref No", but also bare "Ref" alone
+     * since the suffix was optional) is exactly what caused a real false
+     * positive: bare "Reference"/"Ref"/"Transaction"/"Txn"/"UTR" matched on
+     * their own in unrelated contexts. Every phrase here is the whole
+     * label, so a bare "Ref:" with no qualifying word cannot match at all.
+     *
+     * Longer/more specific phrases are listed before shorter ones that are
+     * textual prefixes of them (e.g. "UTR Number" before bare "UTR",
+     * "Transaction Number" before "Transaction No") - PCRE tries
+     * alternatives in order, so this ensures e.g. "UTR Number: 123..."
+     * matches the whole label "UTR Number" rather than matching just "UTR"
+     * and then mistakenly trying to capture "Number" as the value.
      */
-    private const LABEL_WORDS = 'Transaction|Txn|Reference|Ref|UTR';
-    private const SUFFIX_WORDS = 'ID|No|Number|Ref';
+    private const LABELS = [
+        'UPI\s+Transaction\s+ID',
+        'UPI\s+Reference\s+Number',
+        'UPI\s+Ref\s+No',
+        'Transaction\s+Number',
+        'Transaction\s+Reference',
+        'Transaction\s+Ref',
+        'Transaction\s+No',
+        'Transaction\s+ID',
+        'Reference\s+Number',
+        'Reference\s+No',
+        'UTR\s+Number',
+        'UTR',
+        'Txn\s+ID',
+        'Txn\s+No',
+    ];
 
     public static function extract(string $ocrText): ?string
     {
         $normalized = self::normalize($ocrText);
 
-        $pattern = '/\b(?:UPI\s+)?(?:'.self::LABEL_WORDS.')\.?\s*(?:(?:'.self::SUFFIX_WORDS.')\.?)?'
-            .'[\s:\-]{0,5}([A-Za-z0-9]{6,30})\b/i';
+        $labels = implode('|', self::LABELS);
+        $pattern = '/\b(?:'.$labels.')\b\.?[\s:\-]{0,5}([A-Za-z0-9]{6,30})\b/i';
 
-        if (preg_match($pattern, $normalized, $matches) === 1) {
-            return $matches[1];
+        if (preg_match_all($pattern, $normalized, $matches) === 0) {
+            return null;
+        }
+
+        // Check every label occurrence, not just the first: a screenshot
+        // can genuinely contain a label word more than once (e.g. a UI
+        // caption explaining "no transaction ID detected" alongside the
+        // real field), and the first occurrence isn't necessarily the
+        // real one.
+        foreach ($matches[1] as $candidate) {
+            // A real transaction/reference ID always contains at least one
+            // digit; an English word following a label by coincidence
+            // (e.g. "...transaction ID detected") never does. This is what
+            // actually distinguishes a real value from explanatory prose
+            // that happens to contain a label phrase.
+            if (preg_match('/\d/', $candidate) === 1) {
+                return $candidate;
+            }
         }
 
         return null;
