@@ -200,6 +200,10 @@ class ComplaintController extends Controller
             abort(404);
         }
 
+        if (! Storage::disk('local')->exists($attachment->file_path)) {
+            abort(404);
+        }
+
         if (str_starts_with($attachment->mime_type, 'image/')) {
             return Storage::disk('local')->response($attachment->file_path, $attachment->original_name);
         }
@@ -209,6 +213,10 @@ class ComplaintController extends Controller
 
     public function downloadPaymentProof(Complaint $complaint): StreamedResponse
     {
+        if (! Storage::disk('local')->exists($complaint->payment_proof_path)) {
+            abort(404);
+        }
+
         return Storage::disk('local')->response($complaint->payment_proof_path);
     }
 }

@@ -223,4 +223,38 @@ class ComplaintPaymentProofTest extends TestCase
         $complaint = Complaint::first();
         $this->assertFalse($complaint->hasDuplicateTransactionId());
     }
+
+    /**
+     * Regression test: the DB row can reference a file that no longer
+     * exists on disk (e.g. Render's free-tier local storage is wiped on
+     * every restart) - this must 404 cleanly, not crash with an uncaught
+     * Flysystem UnableToRetrieveMetadata exception.
+     */
+    public function test_downloading_a_missing_payment_proof_file_returns_404_not_a_crash(): void
+    {
+        $this->fakeOcrResult(['status' => 'not_found', 'transaction_id' => null]);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Proof will be deleted after upload.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+        ]);
+
+        $complaint = Complaint::first();
+        Storage::disk('local')->delete($complaint->payment_proof_path);
+
+        $this->actingAs($customer)
+            ->get(route('complaints.payment-proof.download', $complaint))
+            ->assertStatus(404);
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['description' => 'admin']);
+        $admin = User::factory()->create(['role_id' => $adminRole->id, 'status' => 'approved']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.complaints.payment-proof.download', $complaint))
+            ->assertStatus(404);
+    }
 }

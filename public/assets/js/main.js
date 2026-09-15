@@ -311,3 +311,22 @@ document.querySelectorAll('[data-password-toggle]').forEach((button) => {
 		button.setAttribute('aria-label', willShow ? 'Hide password' : 'Show password');
 	});
 });
+
+// --- Image preview fallback (x-image-preview component) ------------------
+// The referenced file can genuinely be missing (e.g. Render's free-tier
+// local disk gets wiped on restart) even though the thumbnail markup is
+// there - swap in a placeholder rather than showing a broken-image icon,
+// and stop the (now pointless) new-tab link from opening a 404 page.
+const IMAGE_PREVIEW_FALLBACK = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23f7fafb'/%3E%3Cpath d='M20 44l10-12 8 8 8-14 10 18H20z' fill='%23d8e1e5'/%3E%3Ccircle cx='24' cy='22' r='5' fill='%23d8e1e5'/%3E%3C/svg%3E";
+
+document.querySelectorAll('.image-preview-thumb').forEach((img) => {
+	img.addEventListener('error', () => {
+		img.src = IMAGE_PREVIEW_FALLBACK;
+		img.alt = 'Image unavailable';
+		const link = img.closest('.image-preview-link');
+		if (link) {
+			link.removeAttribute('href');
+			link.classList.add('image-preview-link--broken');
+		}
+	}, { once: true });
+});

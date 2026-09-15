@@ -1240,6 +1240,15 @@ tbody tr:last-child td {
     background: #f7fafb;
 }
 
+.image-preview-link--broken {
+    cursor: default;
+}
+
+.image-preview-link--broken .image-preview-thumb {
+    object-fit: contain;
+    padding: 0.5rem;
+}
+
 .history-card {
     margin-top: 1.5rem;
 }

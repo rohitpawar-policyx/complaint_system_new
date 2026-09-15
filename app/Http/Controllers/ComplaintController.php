@@ -56,7 +56,7 @@ class ComplaintController extends Controller
         // up if anything later in the request fails.
         $paymentProofFile = $request->file('payment_proof');
         $paymentProofStoredName = Str::random(32) . '.' . strtolower($paymentProofFile->getClientOriginalExtension());
-        $paymentProofPath = $paymentProofFile->storeAs('payment-proofs', $paymentProofStoredName, 'local');
+        $paymentProofPath = $paymentProofFile->storeAs('uploads/payment-proofs', $paymentProofStoredName, 'local');
         $storedFiles[] = $paymentProofPath;
 
         // Never throws - see PaymentProofOcrService. A missing/broken
@@ -90,7 +90,7 @@ class ComplaintController extends Controller
 
                 foreach ($request->file('attachments', []) as $file) {
                     $storedName = Str::random(32) . '.' . strtolower($file->getClientOriginalExtension());
-                    $path = $file->storeAs('complaint-attachments', $storedName, 'local');
+                    $path = $file->storeAs('uploads/complaint-attachments', $storedName, 'local');
                     $storedFiles[] = $path;
 
                     ComplaintAttachment::create([
@@ -236,6 +236,13 @@ class ComplaintController extends Controller
             abort(404);
         }
 
+        // The file can genuinely be gone (Render's free-tier local disk is
+        // wiped on every restart/redeploy) even though the DB row still
+        // references it - a 404 here, not an uncaught Flysystem exception.
+        if (! Storage::disk('local')->exists($attachment->file_path)) {
+            abort(404);
+        }
+
         // Images open inline (new tab, browser's own viewer - the user can
         // right-click "Save As" if they want, we don't force it). Non-image
         // attachments (pdf) keep the original forced-download behavior.
@@ -249,6 +256,10 @@ class ComplaintController extends Controller
     public function downloadPaymentProof(Request $request, Complaint $complaint): StreamedResponse
     {
         if ($complaint->user_id !== $request->user()->id) {
+            abort(404);
+        }
+
+        if (! Storage::disk('local')->exists($complaint->payment_proof_path)) {
             abort(404);
         }
 
