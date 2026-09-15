@@ -259,6 +259,15 @@ class ComplaintController extends Controller
             abort(404);
         }
 
+        // Legacy complaints created before this feature existed have no
+        // payment proof at all (payment_proof_path is nullable precisely
+        // for that reason) - Storage::exists() requires a string, so this
+        // must be checked before calling it, not just left to the missing-
+        // file check below.
+        if ($complaint->payment_proof_path === null) {
+            abort(404);
+        }
+
         if (! Storage::disk('local')->exists($complaint->payment_proof_path)) {
             abort(404);
         }
