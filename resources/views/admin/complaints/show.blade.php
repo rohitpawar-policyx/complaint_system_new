@@ -47,6 +47,29 @@
             </form>
         </section>
     </div>
+    <section class="content-card">
+        <h2><x-icon name="receipt" /> Payment verification</h2>
+        <dl class="account-details">
+            <div>
+                <dt>Payment proof</dt>
+                <dd><x-image-preview :src="route('admin.complaints.payment-proof.download', $complaint)" alt="Payment proof" /></dd>
+            </div>
+            <div>
+                <dt>Transaction ID</dt>
+                <dd>{{ $complaint->transaction_id ?? 'Not detected' }}</dd>
+            </div>
+            <div>
+                <dt>OCR status</dt>
+                <dd>{{ ucfirst(str_replace('_', ' ', $complaint->ocr_status)) }}</dd>
+            </div>
+        </dl>
+        @if ($complaint->hasDuplicateTransactionId())
+            <p class="auth-message auth-message--error">
+                <x-icon name="alert-triangle" /> Warning: this transaction ID has already been used by another complaint - investigate before verifying payment.
+            </p>
+        @endif
+        <p class="form-help">An automatically extracted transaction ID is not proof of a valid payment - always verify the payment proof image manually.</p>
+    </section>
     <x-chat-panel
         :complaint="$complaint"
         :send-url="route('admin.complaints.chat.store', $complaint)"
@@ -60,7 +83,11 @@
             <ul class="attachment-list">
                 @foreach ($complaint->attachments as $attachment)
                     <li>
-                        <a href="{{ route('admin.complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                        @if (str_starts_with($attachment->mime_type, 'image/'))
+                            <x-image-preview :src="route('admin.complaints.attachments.download', [$complaint, $attachment])" :alt="$attachment->original_name" />
+                        @else
+                            <a href="{{ route('admin.complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                        @endif
                         <span>{{ number_format($attachment->file_size) }} bytes</span>
                     </li>
                 @endforeach

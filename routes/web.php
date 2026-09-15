@@ -40,6 +40,8 @@ Route::middleware(['auth', 'approved'])->group(function () {
     Route::get('/complaints/{complaint}', [ComplaintController::class, 'show'])->name('complaints.show');
     Route::get('/complaints/{complaint}/attachments/{attachment}', [ComplaintController::class, 'downloadAttachment'])
         ->name('complaints.attachments.download');
+    Route::get('/complaints/{complaint}/payment-proof', [ComplaintController::class, 'downloadPaymentProof'])
+        ->name('complaints.payment-proof.download');
     Route::post('/complaints/{complaint}/chat/messages', [ComplaintController::class, 'storeChatMessage'])
         ->name('complaints.chat.store');
 
@@ -79,6 +81,8 @@ Route::middleware(['auth', 'approved', 'admin'])->prefix('admin')->name('admin.'
     Route::patch('/complaints/{complaint}/status', [AdminComplaintController::class, 'updateStatus'])->name('complaints.status');
     Route::get('/complaints/{complaint}/attachments/{attachment}', [AdminComplaintController::class, 'downloadAttachment'])
         ->name('complaints.attachments.download');
+    Route::get('/complaints/{complaint}/payment-proof', [AdminComplaintController::class, 'downloadPaymentProof'])
+        ->name('complaints.payment-proof.download');
     Route::post('/complaints/{complaint}/chat/messages', [AdminComplaintController::class, 'storeChatMessage'])
         ->name('complaints.chat.store');
 
