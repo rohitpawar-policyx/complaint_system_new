@@ -257,4 +257,37 @@ class ComplaintPaymentProofTest extends TestCase
             ->get(route('admin.complaints.payment-proof.download', $complaint))
             ->assertStatus(404);
     }
+
+    /**
+     * Regression test: payment_proof_path is nullable at the DB level
+     * specifically to accommodate complaints created before this feature
+     * existed (a real migration failure on Postgres proved this is
+     * necessary - see the migration file). Storage::exists() requires a
+     * string, so passing it a null path would throw a TypeError (500), not
+     * a clean 404, unless explicitly guarded against.
+     */
+    public function test_downloading_payment_proof_on_a_legacy_complaint_with_no_path_returns_404_not_a_crash(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+        $complaint = Complaint::create([
+            'user_id' => $customer->id,
+            'reason_id' => $reason->id,
+            'message' => 'Pre-existing complaint from before this feature.',
+            'priority' => 'LOW',
+            'status' => 'pending',
+            'payment_proof_path' => null,
+        ]);
+
+        $this->actingAs($customer)
+            ->get(route('complaints.payment-proof.download', $complaint))
+            ->assertStatus(404);
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['description' => 'admin']);
+        $admin = User::factory()->create(['role_id' => $adminRole->id, 'status' => 'approved']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.complaints.payment-proof.download', $complaint))
+            ->assertStatus(404);
+    }
 }

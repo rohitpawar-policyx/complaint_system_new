@@ -52,7 +52,13 @@
         <dl class="account-details">
             <div>
                 <dt>Payment proof</dt>
-                <dd><x-image-preview :src="route('admin.complaints.payment-proof.download', $complaint)" alt="Payment proof" /></dd>
+                <dd>
+                    @if ($complaint->payment_proof_path)
+                        <x-image-preview :src="route('admin.complaints.payment-proof.download', $complaint)" alt="Payment proof" />
+                    @else
+                        <span class="list-meta">Not submitted (complaint predates this feature)</span>
+                    @endif
+                </dd>
             </div>
             <div>
                 <dt>Transaction ID</dt>

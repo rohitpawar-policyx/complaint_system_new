@@ -9,7 +9,13 @@
             <h2>Complaint information</h2>
             <dl class="account-details">
                 <div><dt>Reason</dt><dd>{{ $complaint->reason->name }}</dd></div>
-                <div><dt>Payment proof</dt><dd><x-image-preview :src="route('complaints.payment-proof.download', $complaint)" alt="Payment proof" /></dd></div>
+                <div><dt>Payment proof</dt><dd>
+                    @if ($complaint->payment_proof_path)
+                        <x-image-preview :src="route('complaints.payment-proof.download', $complaint)" alt="Payment proof" />
+                    @else
+                        <span class="list-meta">Not submitted</span>
+                    @endif
+                </dd></div>
                 <div><dt>Priority</dt><dd><x-priority-badge :priority="$complaint->priority" /></dd></div>
                 <div><dt>Status</dt><dd><x-status-badge :status="$complaint->status" /></dd></div>
                 <div><dt>Created</dt><dd>{{ $complaint->created_at }}</dd></div>

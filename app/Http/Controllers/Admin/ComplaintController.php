@@ -213,6 +213,10 @@ class ComplaintController extends Controller
 
     public function downloadPaymentProof(Complaint $complaint): StreamedResponse
     {
+        if ($complaint->payment_proof_path === null) {
+            abort(404);
+        }
+
         if (! Storage::disk('local')->exists($complaint->payment_proof_path)) {
             abort(404);
         }
