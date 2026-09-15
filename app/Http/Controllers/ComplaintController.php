@@ -236,6 +236,13 @@ class ComplaintController extends Controller
             abort(404);
         }
 
+        // Images open inline (new tab, browser's own viewer - the user can
+        // right-click "Save As" if they want, we don't force it). Non-image
+        // attachments (pdf) keep the original forced-download behavior.
+        if (str_starts_with($attachment->mime_type, 'image/')) {
+            return Storage::disk('local')->response($attachment->file_path, $attachment->original_name);
+        }
+
         return Storage::disk('local')->download($attachment->file_path, $attachment->original_name);
     }
 
@@ -245,6 +252,7 @@ class ComplaintController extends Controller
             abort(404);
         }
 
-        return Storage::disk('local')->download($complaint->payment_proof_path);
+        // Always an image (validated on upload) - always inline.
+        return Storage::disk('local')->response($complaint->payment_proof_path);
     }
 }

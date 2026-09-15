@@ -52,7 +52,7 @@
         <dl class="account-details">
             <div>
                 <dt>Payment proof</dt>
-                <dd><a href="{{ route('admin.complaints.payment-proof.download', $complaint) }}"><x-icon name="image" /> View/Open image</a></dd>
+                <dd><x-image-preview :src="route('admin.complaints.payment-proof.download', $complaint)" alt="Payment proof" /></dd>
             </div>
             <div>
                 <dt>Transaction ID</dt>
@@ -83,7 +83,11 @@
             <ul class="attachment-list">
                 @foreach ($complaint->attachments as $attachment)
                     <li>
-                        <a href="{{ route('admin.complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                        @if (str_starts_with($attachment->mime_type, 'image/'))
+                            <x-image-preview :src="route('admin.complaints.attachments.download', [$complaint, $attachment])" :alt="$attachment->original_name" />
+                        @else
+                            <a href="{{ route('admin.complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                        @endif
                         <span>{{ number_format($attachment->file_size) }} bytes</span>
                     </li>
                 @endforeach

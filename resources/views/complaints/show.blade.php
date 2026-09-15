@@ -9,7 +9,7 @@
             <h2>Complaint information</h2>
             <dl class="account-details">
                 <div><dt>Reason</dt><dd>{{ $complaint->reason->name }}</dd></div>
-                <div><dt>Payment proof</dt><dd><a href="{{ route('complaints.payment-proof.download', $complaint) }}"><x-icon name="receipt" /> View</a></dd></div>
+                <div><dt>Payment proof</dt><dd><x-image-preview :src="route('complaints.payment-proof.download', $complaint)" alt="Payment proof" /></dd></div>
                 <div><dt>Priority</dt><dd><x-priority-badge :priority="$complaint->priority" /></dd></div>
                 <div><dt>Status</dt><dd><x-status-badge :status="$complaint->status" /></dd></div>
                 <div><dt>Created</dt><dd>{{ $complaint->created_at }}</dd></div>
@@ -26,7 +26,11 @@
                 <ul class="attachment-list">
                     @foreach ($complaint->attachments as $attachment)
                         <li>
-                            <a href="{{ route('complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                            @if (str_starts_with($attachment->mime_type, 'image/'))
+                                <x-image-preview :src="route('complaints.attachments.download', [$complaint, $attachment])" :alt="$attachment->original_name" />
+                            @else
+                                <a href="{{ route('complaints.attachments.download', [$complaint, $attachment]) }}"><x-icon name="download" />{{ $attachment->original_name }}</a>
+                            @endif
                             <span>{{ number_format($attachment->file_size) }} bytes</span>
                         </li>
                     @endforeach
