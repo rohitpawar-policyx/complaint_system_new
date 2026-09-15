@@ -10,6 +10,7 @@ use App\Models\ComplaintHistory;
 use App\Models\ComplaintReason;
 use App\Notifications\ComplaintCreatedNotification;
 use App\Models\User;
+use App\Services\PaymentProofOcrService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,11 @@ class ComplaintController extends Controller
         $validated = $request->validate([
             'reason_id' => ['required', 'integer', 'exists:complaint_reasons,id'],
             'message' => ['required', 'string', 'max:10000'],
+            // Image only (not pdf, unlike the general attachments below) -
+            // Tesseract reads pixels, not PDF pages, and keeping OCR to a
+            // single simple input format matches the "keep it simple, this
+            // is a learning implementation" brief.
+            'payment_proof' => ['required', 'image', 'mimes:jpg,jpeg,png', 'max:5120'], // 5 MiB
             'attachments' => ['nullable', 'array', 'max:5'],
             'attachments.*' => ['file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'], // 5 MiB
         ]);
@@ -42,14 +48,35 @@ class ComplaintController extends Controller
 
         $storedFiles = [];
 
+        // Stored and OCR'd *before* the DB transaction: OCR shells out to
+        // an external process that can take a second or more, and holding
+        // a DB transaction open for that long is bad practice regardless
+        // of how reliable the process is. The file is added to
+        // $storedFiles up front so the catch block below still cleans it
+        // up if anything later in the request fails.
+        $paymentProofFile = $request->file('payment_proof');
+        $paymentProofStoredName = Str::random(32) . '.' . strtolower($paymentProofFile->getClientOriginalExtension());
+        $paymentProofPath = $paymentProofFile->storeAs('payment-proofs', $paymentProofStoredName, 'local');
+        $storedFiles[] = $paymentProofPath;
+
+        // Never throws - see PaymentProofOcrService. A missing/broken
+        // Tesseract install or an unreadable image both just resolve to
+        // ocr_status=failed with transaction_id left null, exactly like a
+        // genuinely clean image OCR ran on but found no label match.
+        $ocrResult = app(PaymentProofOcrService::class)
+            ->process(Storage::disk('local')->path($paymentProofPath));
+
         try {
-            $complaint = DB::transaction(function () use ($request, $reason, &$storedFiles) {
+            $complaint = DB::transaction(function () use ($request, $reason, $paymentProofPath, $ocrResult, &$storedFiles) {
                 $complaint = Complaint::create([
                     'user_id' => $request->user()->id,
                     'reason_id' => $reason->id,
                     'message' => $request->input('message'),
                     'priority' => $reason->priority,
                     'status' => 'pending',
+                    'payment_proof_path' => $paymentProofPath,
+                    'transaction_id' => $ocrResult['transaction_id'],
+                    'ocr_status' => $ocrResult['status'],
                 ]);
 
                 ComplaintHistory::create([
@@ -100,8 +127,11 @@ class ComplaintController extends Controller
             report($exception);
         }
 
-        return redirect()->route('complaints.create')
-            ->with('status', 'Complaint submitted successfully.');
+        $status = 'Complaint submitted successfully. '.($complaint->ocr_status === 'extracted'
+            ? 'Payment transaction ID detected successfully.'
+            : 'Your payment proof has been uploaded. The payment details will be verified during complaint processing.');
+
+        return redirect()->route('complaints.create')->with('status', $status);
     }
 
     public function index(Request $request): View
@@ -207,5 +237,14 @@ class ComplaintController extends Controller
         }
 
         return Storage::disk('local')->download($attachment->file_path, $attachment->original_name);
+    }
+
+    public function downloadPaymentProof(Request $request, Complaint $complaint): StreamedResponse
+    {
+        if ($complaint->user_id !== $request->user()->id) {
+            abort(404);
+        }
+
+        return Storage::disk('local')->download($complaint->payment_proof_path);
     }
 }

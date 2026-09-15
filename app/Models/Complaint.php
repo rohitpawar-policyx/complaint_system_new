@@ -18,7 +18,12 @@ class Complaint extends Model
     /** Statuses where an existing chat becomes read-only (history visible, no new messages). */
     public const CHAT_READ_ONLY_STATUSES = ['resolved', 'closed', 'rejected'];
 
-    protected $fillable = ['user_id', 'reason_id', 'message', 'priority', 'status', 'assigned_to'];
+    public const OCR_STATUSES = ['pending', 'extracted', 'not_found', 'failed'];
+
+    protected $fillable = [
+        'user_id', 'reason_id', 'message', 'priority', 'status', 'assigned_to',
+        'payment_proof_path', 'transaction_id', 'ocr_status',
+    ];
 
     public function user(): BelongsTo
     {
@@ -48,5 +53,22 @@ class Complaint extends Model
     public function chatConversation(): HasOne
     {
         return $this->hasOne(ChatConversation::class);
+    }
+
+    /**
+     * Whether this complaint's OCR-extracted transaction ID also appears on
+     * a different complaint. Not a validation rule - transaction_id is
+     * deliberately not unique (see the migration) - this only surfaces a
+     * warning for an admin to actually investigate.
+     */
+    public function hasDuplicateTransactionId(): bool
+    {
+        if ($this->transaction_id === null) {
+            return false;
+        }
+
+        return static::where('transaction_id', $this->transaction_id)
+            ->where('id', '!=', $this->id)
+            ->exists();
     }
 }

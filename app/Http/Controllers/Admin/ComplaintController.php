@@ -202,4 +202,9 @@ class ComplaintController extends Controller
 
         return Storage::disk('local')->download($attachment->file_path, $attachment->original_name);
     }
+
+    public function downloadPaymentProof(Complaint $complaint): StreamedResponse
+    {
+        return Storage::disk('local')->download($complaint->payment_proof_path);
+    }
 }

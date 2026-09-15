@@ -52,6 +52,7 @@ class ComplaintChatTest extends TestCase
             'message' => 'Test complaint',
             'priority' => 'LOW',
             'status' => $status,
+            'payment_proof_path' => 'payment-proofs/test-fixture.jpg',
         ]);
     }
 

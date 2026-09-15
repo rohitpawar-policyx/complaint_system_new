@@ -9,6 +9,7 @@
             <h2>Complaint information</h2>
             <dl class="account-details">
                 <div><dt>Reason</dt><dd>{{ $complaint->reason->name }}</dd></div>
+                <div><dt>Payment proof</dt><dd><a href="{{ route('complaints.payment-proof.download', $complaint) }}"><x-icon name="receipt" /> View</a></dd></div>
                 <div><dt>Priority</dt><dd><x-priority-badge :priority="$complaint->priority" /></dd></div>
                 <div><dt>Status</dt><dd><x-status-badge :status="$complaint->status" /></dd></div>
                 <div><dt>Created</dt><dd>{{ $complaint->created_at }}</dd></div>
