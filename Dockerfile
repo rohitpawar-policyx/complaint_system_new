@@ -22,7 +22,7 @@ FROM php:8.2-cli-bookworm AS app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libzip-dev unzip git libonig-dev libpq-dev \
-    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring bcmath zip \
+    && docker-php-ext-install pdo_mysql pdo_pgsql mbstring bcmath zip pcntl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/html
