@@ -76,7 +76,30 @@ class TransactionIdExtractorTest extends TestCase
             'full screenshot dump with no transaction label' => [
                 "Payment Successful\nAmount Paid: ₹500\nDate: 15 Sep 2026, 10:30 AM\nPaid to: Merchant Store\nUPI ID: merchant@okhdfcbank",
             ],
+            // Real bug, reported live: a label followed by an English word
+            // rather than a real value. A real transaction ID always has
+            // at least one digit; "found"/"detected"/etc. never do.
+            'label followed by a plain word, no digit' => ['Transaction ID: Not found in image'],
+            // The exact screenshot that triggered this: a UI mockup with a
+            // "Transaction ID: Not found in image" field PLUS a caption
+            // reading "No transaction ID detected - just a payment
+            // screenshot" - the caption's own explanation of why there's no
+            // ID contains the label phrase, and used to get mistaken for
+            // the value itself.
+            'real-world false positive: caption explains no ID was detected' => [
+                "Payment Successful\nRs 500 sent successfully\nTransaction ID\nNot found in image\nFrom Amit Sharma\nInvalid Example\nNo transaction ID detected - just a payment screenshot",
+            ],
         ];
+    }
+
+    public function test_it_skips_a_word_only_match_and_finds_a_real_one_elsewhere_in_the_text(): void
+    {
+        // First "Transaction ID" occurrence is word-only (no digit) and
+        // must be skipped in favor of the second, genuine occurrence -
+        // proof that all label occurrences are checked, not just the first.
+        $text = "Transaction ID: Not found in image\n\nActual Transaction ID: 998877665544";
+
+        $this->assertSame('998877665544', TransactionIdExtractor::extract($text));
     }
 
     public function test_it_ignores_a_short_value_below_the_minimum_length(): void

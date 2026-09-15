@@ -54,8 +54,24 @@ class TransactionIdExtractor
         $labels = implode('|', self::LABELS);
         $pattern = '/\b(?:'.$labels.')\b\.?[\s:\-]{0,5}([A-Za-z0-9]{6,30})\b/i';
 
-        if (preg_match($pattern, $normalized, $matches) === 1) {
-            return $matches[1];
+        if (preg_match_all($pattern, $normalized, $matches) === 0) {
+            return null;
+        }
+
+        // Check every label occurrence, not just the first: a screenshot
+        // can genuinely contain a label word more than once (e.g. a UI
+        // caption explaining "no transaction ID detected" alongside the
+        // real field), and the first occurrence isn't necessarily the
+        // real one.
+        foreach ($matches[1] as $candidate) {
+            // A real transaction/reference ID always contains at least one
+            // digit; an English word following a label by coincidence
+            // (e.g. "...transaction ID detected") never does. This is what
+            // actually distinguishes a real value from explanatory prose
+            // that happens to contain a label phrase.
+            if (preg_match('/\d/', $candidate) === 1) {
+                return $candidate;
+            }
         }
 
         return null;
