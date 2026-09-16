@@ -8,8 +8,8 @@ use App\Models\Complaint;
 use App\Models\ComplaintAttachment;
 use App\Models\ComplaintHistory;
 use App\Models\ComplaintReason;
-use App\Notifications\ComplaintCreatedNotification;
 use App\Models\User;
+use App\Notifications\ComplaintCreatedNotification;
 use App\Services\PaymentProofOcrService;
 use App\Support\Idempotency;
 use Illuminate\Http\JsonResponse;
@@ -56,7 +56,7 @@ class ComplaintController extends Controller
         // $storedFiles up front so the catch block below still cleans it
         // up if anything later in the request fails.
         $paymentProofFile = $request->file('payment_proof');
-        $paymentProofStoredName = Str::random(32) . '.' . strtolower($paymentProofFile->getClientOriginalExtension());
+        $paymentProofStoredName = Str::random(32).'.'.strtolower($paymentProofFile->getClientOriginalExtension());
         $paymentProofPath = $paymentProofFile->storeAs('uploads/payment-proofs', $paymentProofStoredName, 'local');
         $storedFiles[] = $paymentProofPath;
 
@@ -90,7 +90,7 @@ class ComplaintController extends Controller
                 ]);
 
                 foreach ($request->file('attachments', []) as $file) {
-                    $storedName = Str::random(32) . '.' . strtolower($file->getClientOriginalExtension());
+                    $storedName = Str::random(32).'.'.strtolower($file->getClientOriginalExtension());
                     $path = $file->storeAs('uploads/complaint-attachments', $storedName, 'local');
                     $storedFiles[] = $path;
 
