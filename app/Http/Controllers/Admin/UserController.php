@@ -93,7 +93,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $changedUsers->count() . ' user(s) updated.',
+            'message' => $changedUsers->count().' user(s) updated.',
             'data' => [],
         ]);
     }
@@ -102,9 +102,9 @@ class UserController extends Controller
     {
         try {
             if ($newStatus === 'approved') {
-                $user->notify(new UserApprovedNotification());
+                $user->notify(new UserApprovedNotification);
             } elseif ($newStatus === 'blocked') {
-                $user->notify(new UserBlockedNotification());
+                $user->notify(new UserBlockedNotification);
             }
         } catch (\Throwable $exception) {
             report($exception);

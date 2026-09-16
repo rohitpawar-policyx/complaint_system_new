@@ -105,7 +105,7 @@ class ComplaintReasonController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $updated . ' reason(s) updated.',
+            'message' => $updated.' reason(s) updated.',
             'data' => [],
         ]);
     }
