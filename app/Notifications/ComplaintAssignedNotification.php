@@ -13,8 +13,7 @@ class ComplaintAssignedNotification extends Notification
     public function __construct(
         private readonly Complaint $complaint,
         private readonly bool $wasReassignment
-    ) {
-    }
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -25,8 +24,8 @@ class ComplaintAssignedNotification extends Notification
     {
         return [
             'title' => $this->wasReassignment ? 'Complaint reassigned to you' : 'Complaint assigned to you',
-            'message' => 'Complaint #' . $this->complaint->id . ' has been '
-                . ($this->wasReassignment ? 're' : '') . 'assigned to you.',
+            'message' => 'Complaint #'.$this->complaint->id.' has been '
+                .($this->wasReassignment ? 're' : '').'assigned to you.',
             'related_type' => 'complaint',
             'related_id' => $this->complaint->id,
         ];

@@ -18,9 +18,7 @@ class ComplaintStatusChangedNotification extends Notification
         'rejected' => 'rejected',
     ];
 
-    public function __construct(private readonly Complaint $complaint)
-    {
-    }
+    public function __construct(private readonly Complaint $complaint) {}
 
     public function via(object $notifiable): array
     {
@@ -29,11 +27,11 @@ class ComplaintStatusChangedNotification extends Notification
 
     public function toArray(object $notifiable): array
     {
-        $label = self::STATUS_LABELS[$this->complaint->status] ?? ('updated to ' . $this->complaint->status);
+        $label = self::STATUS_LABELS[$this->complaint->status] ?? ('updated to '.$this->complaint->status);
 
         return [
             'title' => 'Complaint status updated',
-            'message' => 'Your complaint #' . $this->complaint->id . ' has been ' . $label . '.',
+            'message' => 'Your complaint #'.$this->complaint->id.' has been '.$label.'.',
             'related_type' => 'complaint',
             'related_id' => $this->complaint->id,
         ];

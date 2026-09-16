@@ -10,9 +10,7 @@ class ComplaintCreatedNotification extends Notification
 {
     use Queueable;
 
-    public function __construct(private readonly Complaint $complaint)
-    {
-    }
+    public function __construct(private readonly Complaint $complaint) {}
 
     public function via(object $notifiable): array
     {
@@ -23,8 +21,8 @@ class ComplaintCreatedNotification extends Notification
     {
         return [
             'title' => 'New complaint submitted',
-            'message' => $this->complaint->user->name . ' submitted a new "' . $this->complaint->reason->name
-                . '" complaint (#' . $this->complaint->id . ').',
+            'message' => $this->complaint->user->name.' submitted a new "'.$this->complaint->reason->name
+                .'" complaint (#'.$this->complaint->id.').',
             'related_type' => 'complaint',
             'related_id' => $this->complaint->id,
         ];

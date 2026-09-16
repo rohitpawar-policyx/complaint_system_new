@@ -13,6 +13,7 @@ class Complaint extends Model
     use HasFactory;
 
     public const STATUSES = ['pending', 'in_progress', 'resolved', 'closed', 'rejected'];
+
     public const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'];
 
     /** Statuses where an existing chat becomes read-only (history visible, no new messages). */
