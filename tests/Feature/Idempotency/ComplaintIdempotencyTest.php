@@ -281,6 +281,40 @@ class ComplaintIdempotencyTest extends TestCase
         $this->assertDatabaseCount('complaints', 0);
     }
 
+    /**
+     * Regression test: complaints.store is a plain HTML <form> POST (see
+     * resources/views/complaints/create.blade.php), and a browser form
+     * submission cannot set a custom HTTP header at all - every real
+     * request from that page arrives with NO Idempotency-Key header, only
+     * the hidden "idempotency_key" field the view renders. Every other
+     * test in this file uses withHeaders(), which exercises a path a real
+     * browser submission never takes - this is the one that matches
+     * production traffic.
+     */
+    public function test_idempotency_key_sent_as_a_hidden_form_field_works_without_any_header(): void
+    {
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $formPost = fn () => $this->actingAs($customer)->post(route('complaints.store'), [
+            'reason_id' => $reason->id,
+            'message' => 'Please refund my order.',
+            'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            'idempotency_key' => 'form-field-key-001',
+        ]);
+
+        $first = $formPost();
+        $first->assertRedirect(route('complaints.create'));
+        $this->assertDatabaseCount('complaints', 1);
+
+        // A second submission carrying the SAME hidden-field value (e.g. a
+        // double-click before the page navigated away) must replay, not
+        // create a second complaint.
+        $second = $formPost();
+        $second->assertRedirect(route('complaints.create'));
+        $this->assertDatabaseCount('complaints', 1);
+    }
+
     /** 8. Empty/invalid/oversized Idempotency-Key: rejected. */
     public function test_empty_idempotency_key_is_rejected(): void
     {

@@ -28,6 +28,17 @@ class EnsureIdempotentRequest
 {
     private const HEADER = 'Idempotency-Key';
 
+    /**
+     * Fallback source for a plain HTML <form> POST (e.g. complaints.store):
+     * a browser form submission cannot set a custom HTTP header at all, so
+     * such routes send the key as a hidden input field with this name
+     * instead. The header takes priority for any client that can set one
+     * (a JSON API caller); this is purely a fallback, not a replacement.
+     * RequestFingerprintGenerator::EXCLUDED_FIELDS already excludes this
+     * same field name from the request hash.
+     */
+    private const INPUT_FIELD = 'idempotency_key';
+
     private const MAX_KEY_LENGTH = 255;
 
     public function __construct(
@@ -37,7 +48,7 @@ class EnsureIdempotentRequest
 
     public function handle(Request $request, Closure $next): Response
     {
-        $key = $request->header(self::HEADER);
+        $key = $request->header(self::HEADER) ?? $request->input(self::INPUT_FIELD);
 
         if ($key === null || trim($key) === '') {
             return $this->manager->buildMissingKeyResponse($request);
