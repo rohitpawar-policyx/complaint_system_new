@@ -11,6 +11,7 @@
         "laravel/reverb": "^1.11",
         "laravel/sanctum": "^3.3",
         "laravel/tinker": "^2.8",
+        "sentry/sentry-laravel": "^4.27",
         "thiagoalessio/tesseract_ocr": "^2.13"
     },
     "require-dev": {
