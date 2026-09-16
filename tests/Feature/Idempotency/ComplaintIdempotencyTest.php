@@ -239,15 +239,31 @@ class ComplaintIdempotencyTest extends TestCase
      * (not just returning an unsuccessful response) - the middleware's
      * try/catch around $next($request) must mark the record failed and
      * let the exception continue propagating normally, not swallow it.
+     *
+     * Tested against a throwaway route instead of complaints.store: every
+     * way ComplaintController::store() itself can fail is now deliberately
+     * caught and handled gracefully (the transaction's own try/catch, and
+     * the OCR-dispatch try/catch added below) - by design, there is no
+     * remaining code path where IT specifically produces an uncaught
+     * exception. That's a property of this one controller, not of the
+     * middleware, which is meant to be reusable for any endpoint - so this
+     * verifies the middleware's own contract directly, independent of
+     * complaint-specific internals.
      */
-    public function test_an_exception_during_complaint_creation_marks_the_key_failed_and_allows_retry(): void
+    public function test_an_exception_during_the_handler_marks_the_key_failed_and_allows_retry(): void
     {
-        $customer = $this->makeCustomer();
-        $reason = $this->makeReason();
+        \Illuminate\Support\Facades\Route::post('/idempotency-test/throwing', function () {
+            throw new \RuntimeException('Simulated handler failure.');
+        })->middleware(['web', 'idempotent'])->name('idempotency-test.throwing');
+        // Route::name() sets the name on the Route object but doesn't
+        // re-index RouteCollection's name lookup table on its own (that
+        // normally only happens once, right after all of routes/web.php
+        // finishes loading) - registering a named route mid-test needs this
+        // explicit refresh or route('idempotency-test.throwing') below
+        // throws RouteNotFoundException.
+        \Illuminate\Support\Facades\Route::getRoutes()->refreshNameLookups();
 
-        $throwing = \Mockery::mock(PaymentProofOcrService::class);
-        $throwing->shouldReceive('process')->andThrow(new \RuntimeException('Simulated OCR service crash.'));
-        $this->app->instance(PaymentProofOcrService::class, $throwing);
+        $customer = $this->makeCustomer();
 
         // Without this, Laravel's test-mode exception handler converts the
         // thrown RuntimeException into an ordinary 500 response instead of
@@ -258,11 +274,43 @@ class ComplaintIdempotencyTest extends TestCase
         $this->expectException(\RuntimeException::class);
 
         try {
-            $this->submit($customer, $reason, 'key-006b');
+            $this->actingAs($customer)
+                ->withHeaders(['Idempotency-Key' => 'key-006b'])
+                ->post(route('idempotency-test.throwing'));
         } finally {
-            $this->assertDatabaseCount('complaints', 0);
             $this->assertSame(IdempotencyKey::STATUS_FAILED, IdempotencyKey::first()->status);
         }
+    }
+
+    /**
+     * Real-world version of the same guarantee, specific to this endpoint:
+     * ProcessPaymentProofOcr is dispatched via a queue, which can fail for
+     * reasons that have nothing to do with the complaint itself (the queue
+     * connection being down, say). That must never undo an already-created
+     * complaint, and - just as important - must never mark the idempotency
+     * record failed either: if it did, a client retrying with the same key
+     * after seeing an error would create a SECOND, duplicate complaint
+     * instead of safely replaying the first one, which is exactly the bug
+     * this whole system exists to prevent.
+     */
+    public function test_ocr_dispatch_failure_does_not_undo_the_complaint_or_cause_a_duplicate_on_retry(): void
+    {
+        $mock = \Mockery::mock(PaymentProofOcrService::class);
+        $mock->shouldReceive('process')->andThrow(new \RuntimeException('Simulated queue/OCR failure.'));
+        $this->app->instance(PaymentProofOcrService::class, $mock);
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $first = $this->submit($customer, $reason, 'key-006c');
+        $first->assertRedirect(route('complaints.create'));
+        $this->assertDatabaseCount('complaints', 1);
+        $this->assertSame(IdempotencyKey::STATUS_COMPLETED, IdempotencyKey::first()->status);
+
+        // Retry with the SAME key must replay, not create a second complaint.
+        $second = $this->submit($customer, $reason, 'key-006c');
+        $second->assertRedirect(route('complaints.create'));
+        $this->assertDatabaseCount('complaints', 1);
     }
 
     /** 7. Missing Idempotency-Key: rejected according to the app's validation conventions (redirect back with a flashed error). */

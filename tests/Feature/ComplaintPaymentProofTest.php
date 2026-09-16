@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\ProcessPaymentProofOcr;
 use App\Models\Complaint;
 use App\Models\ComplaintReason;
 use App\Models\Role;
@@ -9,6 +10,7 @@ use App\Models\User;
 use App\Services\PaymentProofOcrService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -121,7 +123,18 @@ class ComplaintPaymentProofTest extends TestCase
         ]);
     }
 
-    /** 3 & 4. Complaint created and transaction ID stored when OCR succeeds. */
+    /**
+     * 3 & 4. Complaint created and transaction ID stored when OCR succeeds.
+     *
+     * OCR now runs in ProcessPaymentProofOcr, a queued job (see
+     * app/Jobs/ProcessPaymentProofOcr.php) - the flash message can no
+     * longer promise a specific OCR outcome, since it's built before the
+     * job has necessarily run. The job dispatch below still executes
+     * synchronously and inline here because phpunit.xml sets
+     * QUEUE_CONNECTION=sync for tests - a real deployment runs it on a
+     * separate worker process instead (see README's Getting started and
+     * Deployment sections).
+     */
     public function test_complaint_created_with_extracted_transaction_id(): void
     {
         $this->fakeOcrResult(['status' => 'extracted', 'transaction_id' => '445566778899']);
@@ -135,7 +148,7 @@ class ComplaintPaymentProofTest extends TestCase
                 'reason_id' => $reason->id,
                 'message' => 'Please refund my order.',
                 'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
-            ])->assertSessionHas('status', fn ($status) => str_contains($status, 'transaction ID detected'));
+            ])->assertSessionHas('status', fn ($status) => str_contains($status, 'being checked automatically'));
 
         $complaint = Complaint::first();
         $this->assertSame('extracted', $complaint->ocr_status);
@@ -201,6 +214,56 @@ class ComplaintPaymentProofTest extends TestCase
 
         $this->assertSame('failed', $result['status']);
         $this->assertNull($result['transaction_id']);
+    }
+
+    /**
+     * The controller must dispatch OCR as a job rather than run it inline -
+     * Queue::fake() here so this test verifies the WIRING (dispatched, with
+     * the right complaint) independently of ProcessPaymentProofOcr's own
+     * behavior, which has its own dedicated tests
+     * (tests/Feature/Jobs/ProcessPaymentProofOcrTest.php).
+     */
+    public function test_ocr_processing_is_dispatched_as_a_queued_job_on_successful_submission(): void
+    {
+        Queue::fake();
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                'payment_proof' => UploadedFile::fake()->image('proof.jpg'),
+            ]);
+
+        $complaint = Complaint::first();
+        $this->assertNotNull($complaint);
+        // Not resolved yet - the whole point of dispatching a job instead
+        // of running OCR inline is that nothing here has processed it.
+        $this->assertSame('pending', $complaint->ocr_status);
+
+        Queue::assertPushed(ProcessPaymentProofOcr::class, fn ($job) => $job->complaint->is($complaint));
+    }
+
+    public function test_ocr_job_is_not_dispatched_when_submission_fails_validation(): void
+    {
+        Queue::fake();
+
+        $customer = $this->makeCustomer();
+        $reason = $this->makeReason();
+
+        $this->actingAs($customer)
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey()])
+            ->post(route('complaints.store'), [
+                'reason_id' => $reason->id,
+                'message' => 'Please refund my order.',
+                // payment_proof omitted - validation fails before any
+                // complaint (and therefore any job) is ever created.
+            ]);
+
+        Queue::assertNotPushed(ProcessPaymentProofOcr::class);
     }
 
     /** 9. Duplicate transaction ID is detected/flagged, not rejected. */

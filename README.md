@@ -5,7 +5,7 @@ A Laravel-based web application for submitting, tracking, and resolving complain
 ## Features
 
 - Customer complaint submission with attachments, status tracking, and history
-- Payment proof required on submission, with automatic transaction ID extraction via local OCR (Tesseract) — never blocks submission if OCR fails, and flags (not rejects) a transaction ID already used by another complaint
+- Payment proof required on submission, with automatic transaction ID extraction via local OCR (Tesseract) run on a background queue — never blocks submission on OCR, and flags (not rejects) a transaction ID already used by another complaint
 - Duplicate-submission protection: an `Idempotency-Key` on complaint creation means a double-click, network retry, or timeout-then-retry can never create two complaints from one logical submission
 - Real-time chat between a customer and any admin on a complaint (Laravel Reverb / WebSockets), gated by complaint status — blocked while `pending`, read-only once `resolved`/`closed`/`rejected`
 - Admin dashboard for managing complaints, assignment, status updates, and complaint history
@@ -18,7 +18,7 @@ A Laravel-based web application for submitting, tracking, and resolving complain
 - PHP 8.2 / Laravel 10
 - MySQL locally, PostgreSQL on Render (see [Deployment](#deployment))
 - Laravel Reverb (WebSocket broadcasting) + Laravel Echo/pusher-js for live chat
-- Tesseract OCR (`tesseract-ocr`, via the `thiagoalessio/tesseract_ocr` PHP wrapper) for payment proof transaction ID extraction
+- Tesseract OCR (`tesseract-ocr`, via the `thiagoalessio/tesseract_ocr` PHP wrapper) for payment proof transaction ID extraction, run via Laravel's database queue driver (see [Queues](#queues))
 - Sentry (`sentry/sentry-laravel`) for error monitoring (see [Error monitoring](#error-monitoring))
 - Vite, Axios, vanilla JS (no frontend framework)
 - Docker for deployment, GitHub Actions for CI (see [Continuous Integration](#continuous-integration))
@@ -55,7 +55,12 @@ A Laravel-based web application for submitting, tracking, and resolving complain
    php artisan reverb:start
    ```
    Set matching `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` in `.env` first (any values work locally, they just need to match). Without this running, everything else still works — chat messages simply won't arrive in real time until you refresh.
-8. (Optional, for OCR) Install Tesseract locally so transaction ID extraction actually runs:
+8. (Optional, for background jobs) Start a queue worker in a third terminal:
+   ```bash
+   php artisan queue:work
+   ```
+   Without this running, `QUEUE_CONNECTION=database` (the default - see [Queues](#queues)) just leaves queued jobs sitting unprocessed in the `jobs` table - complaint submission still works, the payment proof just never gets OCR'd until a worker picks it up. Set `QUEUE_CONNECTION=sync` instead if you'd rather jobs ran inline immediately with no worker needed (defeats the purpose of queueing, but fine for a quick local check).
+9. (Optional, for OCR) Install Tesseract locally so transaction ID extraction actually runs:
    ```bash
    # Debian/Ubuntu
    sudo apt-get install tesseract-ocr tesseract-ocr-eng
@@ -78,12 +83,16 @@ Hosted on [Render](https://render.com). The app uses **MySQL locally** but **Pos
 - Two more Web Services, one per environment, running **Laravel Reverb** for WebSocket chat — same `Dockerfile`/image, but with the Docker Command overridden to `php artisan reverb:start --host=0.0.0.0 --port=$PORT` instead of the default entrypoint.
   - The main app service and its matching Reverb service must share identical `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` (the app authenticates broadcasts *to* Reverb using these).
   - On the main app service, `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` point at the Reverb service's own `.onrender.com` URL (port `443`, scheme `https`) — see the comments in `.env.example` for the full explanation.
+- Two more Web Services, one per environment, running the **queue worker** (see [Queues](#queues)) — same `Dockerfile`/image again, Docker Command overridden to `php artisan queue:work --tries=3 --sleep=3`.
+  - Only the main app service should ever run `migrate --force` (via `docker/entrypoint.sh`'s default behavior) - the worker's Docker Command bypasses that entirely by not invoking the entrypoint's default path, so two services never race to alter the schema at once.
+  - On a fresh deploy there's a brief window where the worker could start before the app service's migration finishes creating the `jobs` table - acceptable at this scale (the worker just briefly errors and Render restarts it), not worth solving with more infrastructure for a small app.
 - Per-service environment variables (set in Render's dashboard, never committed):
   - `DB_CONNECTION=pgsql`
   - `DATABASE_URL=<that environment's Postgres instance's Internal Database URL>`
   - `APP_KEY=<generate separately per environment with php artisan key:generate --show>`
   - `APP_ENV` / `APP_DEBUG` / `APP_URL` set appropriately per environment
   - `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` / `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` as above
+  - `QUEUE_CONNECTION=database` on both the main app service and the worker service — they share the same database, so a job the app enqueues is picked up by the worker regardless of which one wrote it
   - `SENTRY_LARAVEL_DSN` / `SENTRY_ENVIRONMENT` (optional — see [Error monitoring](#error-monitoring))
 
 **Local Docker build/run** (to test the production image before deploying):
@@ -97,6 +106,14 @@ docker run --rm -p 8080:8080 \
   complaint-system:local
 ```
 The container's entrypoint (`docker/entrypoint.sh`) caches config/routes/views, runs `php artisan migrate --force`, then serves on `$PORT` — matching exactly what Render runs in production.
+
+## Queues
+
+Payment proof OCR runs in `app/Jobs/ProcessPaymentProofOcr.php`, dispatched off the request cycle right after a complaint is created (see `ComplaintController::store()`) - Tesseract can take a second or more per image, and a customer shouldn't have to wait on that just to see "your complaint was submitted." The job is dispatched *after* the complaint's DB transaction commits, for the same reason `Idempotency::recordResource()` is - a worker must never be able to pick up a job referencing a row that doesn't exist yet. Dispatch itself is wrapped in its own try/catch (mirroring the admin-notification block right after it): a queue failure must never undo an already-created complaint, and - specific to this endpoint - must never mark the idempotency record failed either, since that would let a client's retry create a *second* complaint instead of safely replaying the first.
+
+Uses Laravel's **database** queue driver (the `jobs` table, created by migration) rather than Redis - one less piece of infrastructure to run for an app this size, using the same Postgres/MySQL already in place. `failed_jobs` (already existed, added for future use before this feature) holds jobs that exhausted their retries; `ProcessPaymentProofOcr::failed()` also explicitly sets `ocr_status = 'failed'` on the complaint so the admin UI shows a conclusive result instead of "pending" forever.
+
+In tests, `phpunit.xml` sets `QUEUE_CONNECTION=sync`, so a dispatched job runs immediately, inline, in the same process - no worker needed for the test suite to exercise OCR's actual behavior end to end.
 
 ## Testing
 
