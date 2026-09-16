@@ -93,6 +93,7 @@ Hosted on [Render](https://render.com). The app uses **MySQL locally** but **Pos
   - `APP_ENV` / `APP_DEBUG` / `APP_URL` set appropriately per environment
   - `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` / `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` as above
   - `QUEUE_CONNECTION=database` on both the main app service and the worker service — they share the same database, so a job the app enqueues is picked up by the worker regardless of which one wrote it
+  - `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` on the worker service too, even though it never broadcasts anything itself: `routes/channels.php` calls `Broadcast::channel(...)` (Laravel's default private-user-channel setup), and that call *always* eagerly constructs the configured broadcaster - with `BROADCAST_DRIVER=reverb` and no Reverb credentials, that crashes on boot with `Pusher::__construct(): Argument #1 ($auth_key) must be of type string, null given`, before the worker ever gets to process a single job. Same values as the main app service - `REVERB_HOST`/`PORT`/`SCHEME` aren't needed since the worker never actually sends anything through them.
   - `SENTRY_LARAVEL_DSN` / `SENTRY_ENVIRONMENT` (optional — see [Error monitoring](#error-monitoring))
 
 **Local Docker build/run** (to test the production image before deploying):
