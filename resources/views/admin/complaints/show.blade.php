@@ -62,7 +62,13 @@
             </div>
             <div>
                 <dt>Transaction ID</dt>
-                <dd>{{ $complaint->transaction_id ?? 'Not detected' }}</dd>
+                <dd>
+                    @if ($complaint->ocr_status === 'pending')
+                        Checking automatically...
+                    @else
+                        {{ $complaint->transaction_id ?? 'Not detected' }}
+                    @endif
+                </dd>
             </div>
             <div>
                 <dt>OCR status</dt>

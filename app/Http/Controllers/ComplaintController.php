@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\ChatMessageSent;
+use App\Jobs\ProcessPaymentProofOcr;
 use App\Models\ChatConversation;
 use App\Models\Complaint;
 use App\Models\ComplaintAttachment;
@@ -10,7 +11,6 @@ use App\Models\ComplaintHistory;
 use App\Models\ComplaintReason;
 use App\Models\User;
 use App\Notifications\ComplaintCreatedNotification;
-use App\Services\PaymentProofOcrService;
 use App\Support\Idempotency;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -49,26 +49,17 @@ class ComplaintController extends Controller
 
         $storedFiles = [];
 
-        // Stored and OCR'd *before* the DB transaction: OCR shells out to
-        // an external process that can take a second or more, and holding
-        // a DB transaction open for that long is bad practice regardless
-        // of how reliable the process is. The file is added to
-        // $storedFiles up front so the catch block below still cleans it
-        // up if anything later in the request fails.
+        // Stored *before* the DB transaction - holding a transaction open
+        // while writing a file to disk is bad practice regardless. The file
+        // is added to $storedFiles up front so the catch block below still
+        // cleans it up if anything later in the request fails.
         $paymentProofFile = $request->file('payment_proof');
         $paymentProofStoredName = Str::random(32).'.'.strtolower($paymentProofFile->getClientOriginalExtension());
         $paymentProofPath = $paymentProofFile->storeAs('uploads/payment-proofs', $paymentProofStoredName, 'local');
         $storedFiles[] = $paymentProofPath;
 
-        // Never throws - see PaymentProofOcrService. A missing/broken
-        // Tesseract install or an unreadable image both just resolve to
-        // ocr_status=failed with transaction_id left null, exactly like a
-        // genuinely clean image OCR ran on but found no label match.
-        $ocrResult = app(PaymentProofOcrService::class)
-            ->process(Storage::disk('local')->path($paymentProofPath));
-
         try {
-            $complaint = DB::transaction(function () use ($request, $reason, $paymentProofPath, $ocrResult, &$storedFiles) {
+            $complaint = DB::transaction(function () use ($request, $reason, $paymentProofPath, &$storedFiles) {
                 $complaint = Complaint::create([
                     'user_id' => $request->user()->id,
                     'reason_id' => $reason->id,
@@ -76,8 +67,11 @@ class ComplaintController extends Controller
                     'priority' => $reason->priority,
                     'status' => 'pending',
                     'payment_proof_path' => $paymentProofPath,
-                    'transaction_id' => $ocrResult['transaction_id'],
-                    'ocr_status' => $ocrResult['status'],
+                    // OCR runs off-request (see ProcessPaymentProofOcr,
+                    // dispatched below) - transaction_id/ocr_status start
+                    // out unknown, not synchronously resolved.
+                    'transaction_id' => null,
+                    'ocr_status' => 'pending',
                 ]);
 
                 ComplaintHistory::create([
@@ -120,6 +114,25 @@ class ComplaintController extends Controller
         // actually committed. See App\Support\Idempotency's docblock.
         Idempotency::recordResource($request, 'complaint', $complaint->id);
 
+        // Dispatched after the transaction above has committed, for the
+        // exact same reason as Idempotency::recordResource() just above: a
+        // queue worker must never be able to pick this job up before the
+        // complaint row it reads actually exists in the database.
+        //
+        // Wrapped in its own try/catch for the same reason as the
+        // notification block below: a queue failure (connection down, etc.)
+        // must never undo an already-created complaint. Just as important
+        // here specifically - letting this throw uncaught would reach
+        // EnsureIdempotentRequest's catch block, which would mark the
+        // idempotency record failed even though the complaint genuinely
+        // exists, making a client's retry create a SECOND, duplicate
+        // complaint instead of safely replaying the first one.
+        try {
+            ProcessPaymentProofOcr::dispatch($complaint);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
         // Notification is created only after the transaction has committed
         // successfully; a failure here must never undo the complaint.
         try {
@@ -133,9 +146,11 @@ class ComplaintController extends Controller
             report($exception);
         }
 
-        $status = 'Complaint submitted successfully. '.($complaint->ocr_status === 'extracted'
-            ? 'Payment transaction ID detected successfully.'
-            : 'Your payment proof has been uploaded. The payment details will be verified during complaint processing.');
+        // OCR's outcome is never known synchronously anymore (see above) -
+        // this message can only honestly promise that checking is underway,
+        // not report a result that doesn't exist yet at this point in the
+        // request.
+        $status = 'Complaint submitted successfully. Your payment proof has been uploaded and is being checked automatically - the transaction ID will be extracted shortly if one is found.';
 
         return redirect()->route('complaints.create')->with('status', $status);
     }
