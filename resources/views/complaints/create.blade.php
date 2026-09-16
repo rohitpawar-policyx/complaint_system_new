@@ -7,6 +7,12 @@
     <section class="content-card complaint-form-card">
         <form method="post" action="{{ route('complaints.store') }}" enctype="multipart/form-data" class="complaint-form">
             @csrf
+            {{-- complaints.store requires an Idempotency-Key; a plain form POST can't set a
+                 custom header, so it's sent as a hidden field instead (EnsureIdempotentRequest
+                 falls back to it). Freshly generated per page load, so a double-click or a
+                 network retry of this exact submission reuses the same value, while a manual
+                 page reload is treated as a genuinely new attempt. --}}
+            <input type="hidden" name="idempotency_key" value="{{ \Illuminate\Support\Str::uuid() }}">
             <label for="reason_id">Complaint reason</label>
             <select id="reason_id" name="reason_id" required>
                 <option value="">Select a reason</option>
