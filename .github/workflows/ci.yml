@@ -26,6 +26,13 @@ jobs:
           extensions: mbstring, pdo_mysql, bcmath, zip
           coverage: none
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+      - run: npm run build
+
       - run: composer install --no-progress --prefer-dist
 
       - run: cp .env.example .env
