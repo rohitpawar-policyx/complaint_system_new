@@ -19,6 +19,7 @@ A Laravel-based web application for submitting, tracking, and resolving complain
 - MySQL locally, PostgreSQL on Render (see [Deployment](#deployment))
 - Laravel Reverb (WebSocket broadcasting) + Laravel Echo/pusher-js for live chat
 - Tesseract OCR (`tesseract-ocr`, via the `thiagoalessio/tesseract_ocr` PHP wrapper) for payment proof transaction ID extraction
+- Sentry (`sentry/sentry-laravel`) for error monitoring (see [Error monitoring](#error-monitoring))
 - Vite, Axios, vanilla JS (no frontend framework)
 - Docker for deployment, GitHub Actions for CI (see [Continuous Integration](#continuous-integration))
 
@@ -83,6 +84,7 @@ Hosted on [Render](https://render.com). The app uses **MySQL locally** but **Pos
   - `APP_KEY=<generate separately per environment with php artisan key:generate --show>`
   - `APP_ENV` / `APP_DEBUG` / `APP_URL` set appropriately per environment
   - `REVERB_APP_ID` / `REVERB_APP_KEY` / `REVERB_APP_SECRET` / `REVERB_HOST` / `REVERB_PORT` / `REVERB_SCHEME` as above
+  - `SENTRY_LARAVEL_DSN` / `SENTRY_ENVIRONMENT` (optional — see [Error monitoring](#error-monitoring))
 
 **Local Docker build/run** (to test the production image before deploying):
 ```bash
@@ -116,6 +118,18 @@ Code style is enforced with [Laravel Pint](https://laravel.com/docs/pint):
 ./vendor/bin/pint --test   # check only
 ./vendor/bin/pint          # auto-fix
 ```
+
+## Error monitoring
+
+Unhandled exceptions are reported to [Sentry](https://sentry.io) via `sentry/sentry-laravel`, wired in `app/Exceptions/Handler.php`. Entirely optional — with `SENTRY_LARAVEL_DSN` unset (the default), nothing is sent anywhere and the app behaves exactly as before.
+
+**Setup:**
+1. Create a free project at sentry.io — Platform: Laravel
+2. Copy its DSN into `SENTRY_LARAVEL_DSN` (locally in `.env`; on Render, per-service in the dashboard)
+3. Set `SENTRY_ENVIRONMENT` to `local` / `staging` / `production` so events are distinguishable in the Sentry dashboard — the same Sentry project can be shared across `uat` and production this way, no need for two
+4. Verify it's working: `php artisan sentry:test` sends a real test event
+
+Performance tracing is off by default (`traces_sample_rate` unset in `config/sentry.php`) — only error reporting is enabled, to stay well within Sentry's free tier for an app this size.
 
 ## Continuous Integration
 
